@@ -1,208 +1,149 @@
-﻿
-#include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
+﻿#include <iostream>
+#define GLFW_STATIC
 #include <GL\glew.h>
 #include <GLFW\glfw3.h>
-#include <cmath>
-
-
-const GLint WIDTH = 800, HEIGHT = 600; // window size 800*600
-GLuint VAO, VBO, shader;//GL unisigned integer
-
-GLuint uniformXMove;
-bool direction = true;
-float triOffset = 0.0f;
-float triMaxoffset = 0.7f;
-float triIncrement = 0.005f;
 
 
 
-
-//Create vertex shader
-static const char* vShader = "										\n\
-#version 330														\n\
-																	\n\
-layout(location = 0) in vec3 pos;									\n\
-uniform float xMove;												\n\
-																	\n\
-void main(){														\n\
-	gl_Position = vec4(0.4*pos.x + xMove, 0.4*pos.y, pos.z, 1.0);	\n\
-}";
-//Create fragment Shader
-static const char* fShader = "										\n\
-#version 330														\n\
-																	\n\
-out vec4 colour;													\n\
-																	\n\
-void main(){														\n\
-	colour = vec4(1.0, 0.0, 0.0, 1.0);								\n\
-}";
+float vertices[] = {
+	-0.5f, -0.5f, 0.0f, //0
+	0.5f, -0.5f, 0.0f,  //1
+	0.0f, 0.5f, 0.0f,   //2
+	//0.5f, -0.5f, 0.0f,  //1
+	//0.0f, 0.5f, 0.0f,   //2
+	0.8f, 0.8f, 0.0f    //3
+};
+//节省数据：EBO element buffer object
+//0,1,2三个点构成了第一个三角形; 1,2,3三个点构成了第二个三角形
+unsigned int indices[] = {
+	0,1,2,
+	2,1,3
+};
 
 
+//把VOA中的东西倒进vertex shader(location=0指的是从VOA中的index/attribute=0的位置开始往里倒)
+//在Notepad++中按住ALT可以选出一列然后输入\n
+//复制到VS中内容会紊乱，按CONTROL Z即恢复
+//vertex shader (GLSL源代码)
+const char* vertexShaderSource = "						  \n\
+#version 330 core                                         \n\
+layout (location = 0) in vec3 aPos;                       \n\
+void main(){                                              \n\
+    gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);}     \n\
+";
+//fragment shader (GLSL源代码)
+const char* fragmentShaderSource = "				\n\
+#version 330 core                                   \n\
+out vec4 FragColor;                                 \n\
+void main(){                                        \n\
+    FragColor = vec4(1.0f, 0.5f, 0.2f, 1.0f);}      \n\
+";
 
-//Vertex Specification: Create VAO, VBO
-void createTriangle() {
 
-	GLfloat vertices[] = {
-		-1.0f, -1.0f, 0.0f, 
-		1.0f, -1.0f, 0.0f, 
-		0.0f, 1.0f, 0.0f
-	};
-	glGenVertexArrays(1, &VAO); //generate a vao id
-	glBindVertexArray(VAO); //bind the vao with its id
-	glGenBuffers(1, &VBO); //generate a vbo id
-	glBindBuffer(GL_ARRAY_BUFFER, VBO); //bind vbo with its id, attached to the chosen VAO
 
-	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW); //connect data and buffer
-	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, 0); //define the attribute pointer formatting, location = 0, size of one value = 3 
-	glEnableVertexAttribArray(0); //enable the attibute pointer, location = 0
-	//unbind VAO and VBO
-	glBindBuffer(GL_ARRAY_BUFFER, 0); //0 means bind with nothing
-	glBindVertexArray(0); //0 means bind with nothing
-}
-void addShader(GLuint theProgram, const char* shaderCode, GLenum shaderType) {
-	GLuint theShader = glCreateShader(shaderType);// create an empty shader
 
-	const GLchar* theCode[1];
-	theCode[0] = shaderCode;
-
-	GLint codeLength[1];
-	codeLength[0] = strlen(shaderCode);
-
-	glShaderSource(theShader, 1, theCode, codeLength); //get the code
-	glCompileShader(theShader); //compile the code
-	//another error check
-	GLint result = 0;//result of the two functions
-	GLchar eLog[1024] = { 0 };//a place to log the error
-	glGetShaderiv(theShader, GL_COMPILE_STATUS, &result);//make sure it is LINDED
-	if (!result) {
-		glGetShaderInfoLog(theShader, 1024, NULL, eLog);
-		printf("Error compiling the %d shader: '%s'\n", shaderType, eLog);
-		return;
+//自己写一个获取用户动作的方法
+void processInput(GLFWwindow* window) {
+	if (glfwGetKey(window, GLFW_KEY_ESCAPE)) {//是不是获取到了ESC
+		glfwSetWindowShouldClose(window, true);
 	}
-	//attach the shader
-	glAttachShader(theProgram, theShader);
-
-}
-void compileShaders() {
-	shader = glCreateProgram();
-	if (!shader) { // if nothing is returned from the shader string
-		printf("Error Creating shader programming\n");
-		return;
-	}
-	addShader(shader, vShader, GL_VERTEX_SHADER);
-	addShader(shader, fShader, GL_FRAGMENT_SHADER);
-
-	GLint result = 0;//result of the two functions
-	GLchar eLog[1024] = { 0 };//a place to log the error
-	//LINK
-	glLinkProgram(shader);
-	glGetProgramiv(shader, GL_LINK_STATUS, &result);//make sure it is LINDED
-	if (!result) {
-		glGetProgramInfoLog(shader, sizeof(eLog), NULL, eLog);
-		printf("Error linking programm: '%s'\n", eLog);
-		return;
-	}
-	//VALIDATE
-	glValidateProgram(shader);
-	glGetProgramiv(shader, GL_VALIDATE_STATUS, &result);//make sure it is VAILDATE
-	if (!result) {
-		glGetProgramInfoLog(shader, sizeof(eLog), NULL, eLog);
-		printf("Error validating programm: '%s'\n", eLog);
-		return;
-	}
-
-	uniformXMove = glGetUniformLocation(shader, "xMove");
-
 }
 
 
-int main()
-{
-	// Initialize GLFW
-	if (!glfwInit()) { //glfw failed
-		printf("GLFW INITIALISATION FIALED");
+int main() //返回0是正常退出，返回-1是非正常推出
+{	
+	// 初始化GLFW
+	glfwInit();
+	// 使用3.3版本的glfw
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);//使用此profile
+
+	//造窗子-给大小和名字，返回一个指针。
+	GLFWwindow* window = glfwCreateWindow(800, 600, "My OpenGL Game", NULL, NULL);
+
+	if (window == NULL) {//空指针，造窗失败
+		printf("open window failed");
 		glfwTerminate();
-		return 1; 
+		return -1;
 	}
-	//GLEW window properties
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);//the major version is going to be 3;
-	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);// the minor version is going to be 3;
-	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);//no backwards compatibility
-	glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);//allow forwards compatibility
-	GLFWwindow* mainWindow = glfwCreateWindow(WIDTH, HEIGHT, "Test window", NULL, NULL); //window name
-	//Create window
-	if (!mainWindow) {//glfw window failed
-		printf("GLFW window creation failed");
+
+	glfwMakeContextCurrent(window);//造窗成功，那么主要上下文就用这个window
+
+	// 初始化GLEW
+	glewExperimental = true;
+	if (glewInit() != GLEW_OK) {//GLEW失败，没有返回GLEW_OK
+		printf("init glew failed");
 		glfwTerminate();
-		return 1;
+		return -1;
 	}
-	//Window size
-	int bufferWidth, bufferHeight;// get buffer size information
-	glfwGetFramebufferSize(mainWindow, &bufferWidth, &bufferHeight);//put them into &bufferWidth and &bufferHeight
-	glfwMakeContextCurrent(mainWindow);//everything will be draw in this window(current window)
-	glewExperimental = GLU_TRUE;//allow modern extention features
-	
 
-	// Initialize GLEW
-	if (glewInit() != GLEW_OK) { //GLEW failed
-		printf("GLFW INITIALISATION FAILED");
-		glfwDestroyWindow(mainWindow);
-		glfwTerminate();
-		return 1;
-	}
-	//Viewport size
-	glViewport(0, 0, bufferWidth, bufferHeight);
+	//都成功，虾面就可以开窗口辣
+	glViewport(0, 0, 800, 600); //起始坐标点是（0，0） ，可以绘制的像素宽高（800，600）
 
-	//Create Triangle and compile the code
-	createTriangle();
-	compileShaders();
+	//glEnable(GL_CULL_FACE); //开启面剔除功能
+	//glCullFace(GL_FRONT);//使用面剔除方法剔除背面（逆时针画的叫正面-GL_FRONT；顺时针画出来的面叫背面-GL_BACK）
 
+	glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);//只有框线
 
-	//Loop until window closed
-	while (!glfwWindowShouldClose(mainWindow)) {
-
-		//get and handle user input events
-		glfwPollEvents(); //check all kinds of inputs: keyboard, mouse, resize the window...
-
-		if (direction) {
-			triOffset += triIncrement; //if we hit the right direction, we will add increment to the triOffset 偏离量
-		}
-		else {
-			triOffset -= triIncrement; //if we hit the left direction, we will minus incremant from the triOffset
-		}
-
-		if (abs(triOffset) >= triMaxoffset) { 
-			direction = !direction; //if the trioffset hit the max offset, we need to change the direction
-		}
-		
-
-		//clear the window
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f); //0%red, 0green, 0blue, fully opaque (black)
-		glClear(GL_COLOR_BUFFER_BIT);
+	//创造并且绑定VAO和VBO
+	unsigned int VAO;
+	glGenVertexArrays(1, &VAO);//用这个方法产生（多个）VAO，然后把第一个的位置传过去。在此只造一个VAO。
+	glBindVertexArray(VAO);//VAO绑定位置结束
+	unsigned int VBO;
+	glGenBuffers(1,&VBO);//用这个方法可以产生（多个）VBO，然后把第一个的位置传过去。在此只造一个VBO。
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);//VBO同VAO绑定
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW); //把CPU的东西塞进GPU
+	unsigned int EBO;
+	glGenBuffers(1, &EBO);//用这个方法可以产生（多个）EBO，然后把第一个的位置传过去。在此只造一个EBO。
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
 
 
-		glUseProgram(shader);//start using shader
 
-		glUniform1f(uniformXMove, triOffset); //assign a value to the shader
-		 
+	//利用OPENGL现场把上述源代码compile了
+	unsigned int vertexShader;
+	vertexShader = glCreateShader(GL_VERTEX_SHADER);//创造一个vertexshader
+	glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);//1个字符串
+	glCompileShader(vertexShader);
+	//利用OPENGL现场把上述源代码compile了
+	unsigned int fragmentShader;
+	fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);//创造一个fragmentshader
+	glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);//1个字符串
+	glCompileShader(fragmentShader);
+	//把这两个shader组装成一个program
+	unsigned int shaderProgram;
+	shaderProgram = glCreateProgram();
+	glAttachShader(shaderProgram, vertexShader);
+	glAttachShader(shaderProgram, fragmentShader);
+	glLinkProgram(shaderProgram);
+
+	//从第几个开始绘制（0），三个数据是一个顶点/资料（3），每个数值的形式是什么（float），
+	//要不要帮你aline到正负1之间（不用 GL_FALSE），每笔资料之间间隔的长度是多少（3个float），第一笔资料的偏移量是多少（(void*)0）
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3*sizeof(float), (void*)0); 
+	glEnableVertexAttribArray(0);//把第0号打开
+
+	//我们不能让程序运行完成即结束，需要一直画一直收集用户动作，直到用户明确表示结束程序
+	while (!glfwWindowShouldClose(window)) {//render loop 渲染循环 (没有要关窗)
+		glfwSwapBuffers(window);//切换色彩缓存区，涉及到double buffer(front buffer&backbuffer)的问题，具体参阅网站
+
+		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);//red green blue, alpha 都是低档0满档1
+		glClear(GL_COLOR_BUFFER_BIT);//只清掉COLOR BUFFER就可以了
+
 		glBindVertexArray(VAO);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
 
-		glDrawArrays(GL_TRIANGLES, 0, 3); //there are 3 points in a triangle
+		glUseProgram(shaderProgram);
+		//glDrawArrays(GL_TRIANGLES, 0, 3); //从第0个点开始画，一共画3个点
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);//要画6个顶点，值的类型是Unsigned int，偏移量是0
 
-		glBindVertexArray(0);
 
-		glUseProgram(0);//stop using shader
-
-		//swap buffer
-		glfwSwapBuffers(mainWindow);
+		glfwPollEvents();//把用户动作获取出来
+		processInput(window);//自己写一个获取用户动作的方法
+		
 	}
 
-
-
-
+	glfwTerminate();
 	return 0;
-
 }
 
