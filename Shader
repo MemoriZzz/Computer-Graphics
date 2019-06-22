@@ -1,0 +1,301 @@
+//main.cpp
+
+#include <iostream>
+#define GLFW_STATIC
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>//系统里的库
+#include "Shader.h"//自己写的库
+
+
+float vertices[] = {
+	//位置                 //RGB颜色                 //index
+	-0.5f, -0.5f, 0.0f,    1.0f, 0, 0,                //0
+	0.5f, -0.5f, 0.0f,     0, 1.0f, 0,                //1
+	0.0f, 0.5f, 0.0f,      0, 0, 1.0f,                //2
+	//0.5f, -0.5f, 0.0f,                              //1
+	//0.0f, 0.5f, 0.0f,                               //2
+	0.8f, 0.8f, 0.0f,      1.0f, 0, 1.0f			  //3
+};
+//节省数据：EBO element buffer object
+//0,1,2三个点构成了第一个三角形; 1,2,3三个点构成了第二个三角形
+unsigned int indices[] = {
+	0,1,2,
+	2,1,3
+};
+
+
+//自己写一个获取用户动作的方法
+void processInput(GLFWwindow* window) {
+	if (glfwGetKey(window, GLFW_KEY_ESCAPE)) {//是不是获取到了ESC
+		glfwSetWindowShouldClose(window, true);
+	}
+}
+
+
+int main(){//返回0是正常退出，返回-1是非正常推出
+
+
+	// 初始化GLFW
+	glfwInit();
+	// 使用3.3版本的glfw
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+	glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+	glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);//使用此profile
+
+	//造窗子-给大小和名字，返回一个指针。
+	GLFWwindow* window = glfwCreateWindow(800, 600, "My OpenGL Game", NULL, NULL);
+
+	if (window == NULL) {//空指针，造窗失败
+		printf("open window failed");
+		glfwTerminate();
+		return -1;
+	}
+
+	glfwMakeContextCurrent(window);//造窗成功，那么主要上下文就用这个window
+
+	// 初始化GLEW
+	glewExperimental = true;
+	if (glewInit() != GLEW_OK) {//GLEW失败，没有返回GLEW_OK
+		printf("init glew failed");
+		glfwTerminate();
+		return -1;
+	}
+
+	//都成功，虾面就可以开窗口辣
+	glViewport(0, 0, 800, 600); //起始坐标点是（0，0） ，可以绘制的像素宽高（800，600）
+	//glEnable(GL_CULL_FACE); //开启面剔除功能
+	//glCullFace(GL_FRONT);//使用面剔除方法剔除背面（逆时针画的叫正面-GL_FRONT；顺时针画出来的面叫背面-GL_BACK）
+	//glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);//只有框线
+
+
+
+	//两种使用其他文件下方法的方式（指针:有*,有new,有->  /  非指针:没有*,没有new,没有->直接用.）。这里使用了文件流。
+	Shader* myShader = new Shader("vertexSource.txt", "fragmentSource.txt");
+
+	//创造并且绑定VAO和VBO
+	unsigned int VAO;
+	glGenVertexArrays(1, &VAO);//用这个方法产生（多个）VAO，然后把第一个的位置传过去。在此只造一个VAO。
+	glBindVertexArray(VAO);//VAO绑定位置结束
+	unsigned int VBO;
+	glGenBuffers(1,&VBO);//用这个方法可以产生（多个）VBO，然后把第一个的位置传过去。在此只造一个VBO。
+	glBindBuffer(GL_ARRAY_BUFFER, VBO);//VBO同VAO绑定
+	glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW); //把CPU的东西塞进GPU
+	unsigned int EBO;
+	glGenBuffers(1, &EBO);//用这个方法可以产生（多个）EBO，然后把第一个的位置传过去。在此只造一个EBO。
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+	glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+
+
+
+	//VOA -> vertex shader(位置)
+	glVertexAttribPointer(6, 3, GL_FLOAT, GL_FALSE, 6*sizeof(float), (void*)0); //从第几个开始绘制（6）:这个数0-15均可用，三个数据是一个顶点/资料（3），每个数值的形式是什么（float），要不要帮你aline到正负1之间（不用 GL_FALSE），每笔资料之间间隔的长度是多少/跳几个数据得到下一笔数据（6个float），第一笔资料的偏移量是多少（(void*)0）
+	glEnableVertexAttribArray(6);//把第6号打开
+	//VOA -> vertex shader(颜色)
+	glVertexAttribPointer(7, 3, GL_FLOAT, GL_FALSE, 6*sizeof(float), (void*) (3*sizeof(float))); //从第几个开始绘制（1），三个数据是一个顶点/资料（3），每个数值的形式是什么（float），要不要帮你aline到正负1之间（不用 GL_FALSE），每笔资料之间间隔的长度是多少/跳几个数据得到下一笔数据（6个float），第一笔资料的偏移量是多少（(void*) (3*sizeof(float))）
+	glEnableVertexAttribArray(7);//把第7号打开
+
+	//我们不能让程序运行完成即结束，需要一直画一直收集用户动作，直到用户明确表示结束程序
+	while (!glfwWindowShouldClose(window)) {//render loop 渲染循环 (没有要关窗)
+		glfwSwapBuffers(window);//切换色彩缓存区，涉及到double buffer(front buffer&backbuffer)的问题，具体参阅网站
+
+		glClearColor(0.2f, 0.3f, 0.3f, 1.0f);//red green blue, alpha 都是低档0满档1
+		glClear(GL_COLOR_BUFFER_BIT);//只清掉COLOR BUFFER就可以了
+
+		//Bind
+		glBindVertexArray(VAO);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+
+		myShader->use();
+
+		glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);//要画6个顶点，值的类型是Unsigned int，偏移量是0
+
+
+		glfwPollEvents();//把用户动作获取出来
+		processInput(window);//自己写一个获取用户动作的方法
+		
+	}
+
+	glfwTerminate();
+	return 0;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+//shader.cpp
+
+#include "Shader.h"
+#include <iostream>
+#include <fstream>
+#include <sstream>
+using namespace std;
+
+#define GLFW_STATIC
+#include <GL/glew.h>
+#include <GLFW/glfw3.h>
+
+//file stream
+
+//Shader命名空间下的Shader构造函数
+Shader::Shader(const char* vertexPath, const char* fragmentPath) {
+	ifstream vertexFile; //ifstream = input file stream
+	ifstream fragmentFile;
+	stringstream vertexSStream; //stringstream = string stream
+	stringstream fragmentSStream;
+
+	//读档
+	vertexFile.open(vertexPath);
+	fragmentFile.open(fragmentPath);
+
+	//测试是不是档案坏掉
+	vertexFile.exceptions(ifstream::failbit || ifstream::badbit);
+	fragmentFile.exceptions(ifstream::failbit || ifstream::badbit);
+
+	
+	try 
+	{
+		if (!vertexFile.is_open() || !fragmentFile.is_open()) { //测试是不是没打开文件（文件名达错等）
+			throw exception("open file error");
+		}
+
+		//把file从硬盘读到file buffer，再导入string buffer
+		vertexSStream << vertexFile.rdbuf(); 
+		fragmentSStream << fragmentFile.rdbuf(); 
+
+		//string buffer -> string class
+		vertexString = vertexSStream.str(); 
+		fragmentString = fragmentSStream.str();
+
+		//string class -> char*
+		vertexSource = vertexString.c_str();
+		fragmentSource = fragmentString.c_str();
+
+		unsigned int vertex, fragment;//两个变量用来承载GPU返还给我的shader番号
+
+		vertex = glCreateShader(GL_VERTEX_SHADER);
+		glShaderSource(vertex, 1, &vertexSource, NULL); //先给出番号，然后给出长度（就一个字符串），然后给出地址/位置，最后是NULL
+		glCompileShader(vertex); //compile
+		checkCompileErrors(vertex, "VERTEX");
+
+		fragment = glCreateShader(GL_FRAGMENT_SHADER);
+		glShaderSource(fragment, 1, &fragmentSource, NULL);
+		glCompileShader(fragment); 
+		checkCompileErrors(fragment, "FRAGMENT");
+		//至此，file转化为binary code
+
+		ID = glCreateProgram();
+		glAttachShader(ID, vertex);
+		glAttachShader(ID, fragment);
+		glLinkProgram(ID);
+		checkCompileErrors(ID, "PROGRAM");
+		//至此，转化为executable binary code
+
+		glDeleteShader(vertex);
+		glDeleteShader(fragment);
+
+
+
+
+	}
+	catch (const std::exception& ex)
+	{
+		printf(ex.what());
+	}
+
+}
+
+void Shader::use() {
+	glUseProgram(ID);
+}
+
+void Shader::checkCompileErrors(unsigned int identification, std::string type) {
+	int success;
+	char infoLog[512];
+
+	if (type != "PROGRAM") { //进来的不是"PROGRAM"那就是"VERTEX"或者"FRAGMENT"
+		glGetShaderiv(identification, GL_COMPILE_STATUS, &success);
+		if (!success) { //存入success不成功
+			glGetShaderInfoLog(identification, 512, NULL, infoLog);
+			cout << "shader COMPILE error: " << infoLog << endl;
+		}
+	}else{
+		glGetProgramiv(identification, GL_LINK_STATUS, &success);
+		if (!success) {
+			glGetProgramInfoLog(identification, 512, NULL, infoLog);
+			cout << "program LINKING error: " << infoLog << endl;
+		}
+	}
+
+}
+
+
+
+
+
+
+
+
+
+
+
+//shader.h
+
+#pragma once
+#include <string>
+
+
+class Shader
+{
+public:
+	Shader(const char* vertexPath, const char* fragmentPath);//构造函数
+	std::string vertexString;
+	std::string fragmentString;
+	const char* vertexSource;
+	const char* fragmentSource;
+	unsigned int ID; //shader program ID
+	void use();
+
+private:
+	void checkCompileErrors(unsigned int identification, std::string type);
+};
+
+
+
+
+
+
+
+
+
+
+//vertexSource.txt
+
+																  
+#version 330 core			
+layout (location = 6) in vec3 aPos;								  
+layout (location = 7) in vec3 aColor;							  
+out vec4 vertexColor;											  
+void main(){													  
+    gl_Position = vec4(aPos.x, aPos.y, aPos.z, 1.0);			  
+	vertexColor = vec4 (aColor.x, aColor.y, aColor.z, 1.0);
+}	  
+
+
+
+//fragmentSource.txt
+
+#version 330 core   
+in vec4 vertexColor;								
+//uniform vec4 changingColor;							
+out vec4 FragColor;                               
+void main(){                                      
+    FragColor = vertexColor;
+}		
